@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.1](https://github.com/operasoftware/cnpg-plugin-pgbackrest/compare/v0.6.0...v0.6.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **deps:** Update k8s.io/utils digest to cf1189d ([#89](https://github.com/operasoftware/cnpg-plugin-pgbackrest/issues/89)) ([4b75501](https://github.com/operasoftware/cnpg-plugin-pgbackrest/commit/4b7550188244aa35951c34bc70dd47ff6a4e60d6))
+* **deps:** Update module sigs.k8s.io/kustomize/api to v0.21.1 ([#95](https://github.com/operasoftware/cnpg-plugin-pgbackrest/issues/95)) ([a07d77a](https://github.com/operasoftware/cnpg-plugin-pgbackrest/commit/a07d77af83997d3188e0c2e1b4e1d467f8d94003))
+* **deps:** Update module sigs.k8s.io/kustomize/kyaml to v0.21.1 ([#96](https://github.com/operasoftware/cnpg-plugin-pgbackrest/issues/96)) ([61b98a0](https://github.com/operasoftware/cnpg-plugin-pgbackrest/commit/61b98a09ce2d12b01478b98bf44dc8b999fe9068))
+
 ## [0.6.0](https://github.com/operasoftware/cnpg-plugin-pgbackrest/compare/v0.5.2...v0.6.0) (2026-05-28)
 
 
