@@ -320,6 +320,22 @@ type PgbackrestRepository struct {
 	Retention *PgbackrestRetention `json:"retention,omitempty"`
 }
 
+// BackupStandbyType selects pgBackRest's "backup from standby" behavior,
+// mirroring the values accepted by pgBackRest's backup-standby option.
+type BackupStandbyType string
+
+const (
+	// BackupStandbyDisabled keeps the default behavior: backups always run
+	// against the primary (pgBackRest backup-standby=n).
+	BackupStandbyDisabled BackupStandbyType = "n"
+	// BackupStandbyEnabled requires the backup to be taken from a standby
+	// (pgBackRest backup-standby=y).
+	BackupStandbyEnabled BackupStandbyType = "y"
+	// BackupStandbyPrefer takes the backup from a standby when one is available,
+	// otherwise falls back to the primary (pgBackRest backup-standby=prefer).
+	BackupStandbyPrefer BackupStandbyType = "prefer"
+)
+
 // PgbackrestConfiguration is the configuration of all pgBackRest operations
 type PgbackrestConfiguration struct {
 	Repositories []PgbackrestRepository `json:"repositories"`
@@ -351,6 +367,21 @@ type PgbackrestConfiguration struct {
 	// this parameter is omitted
 	// +optional
 	Stanza string `json:"stanza,omitempty"`
+
+	// BackupStandby enables taking backups from a standby instance instead of
+	// the primary. When set to "y" or "prefer" and a backup is scheduled on a
+	// replica (e.g. a Backup/ScheduledBackup with target prefer-standby), the
+	// plugin configures a second pgBackRest host pointing at the current
+	// primary over TLS and passes --backup-standby, offloading the backup I/O
+	// from the primary. The default (empty, treated as "n") preserves the
+	// primary-only behavior.
+	//
+	// Experimental: this additionally requires a pgBackRest TLS server and its
+	// certificates to be running on the instances. See
+	// https://github.com/operasoftware/cnpg-plugin-pgbackrest/issues/103
+	// +kubebuilder:validation:Enum=y;prefer;n
+	// +optional
+	BackupStandby BackupStandbyType `json:"backupStandby,omitempty"`
 }
 
 // ArePopulated checks if the passed set of credentials contains
