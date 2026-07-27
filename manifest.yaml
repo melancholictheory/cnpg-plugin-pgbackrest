@@ -44,22 +44,38 @@ spec:
                 properties:
                   backupStandby:
                     description: |-
-                      BackupStandby enables taking backups from a standby instance instead of
-                      the primary. When set to "y" or "prefer" and a backup is scheduled on a
-                      replica (e.g. a Backup/ScheduledBackup with target prefer-standby), the
-                      plugin configures a second pgBackRest host pointing at the current
-                      primary over TLS and passes --backup-standby, offloading the backup I/O
-                      from the primary. The default (empty, treated as "n") preserves the
-                      primary-only behavior.
+                      BackupStandby, when set, makes backups that are scheduled on a standby run
+                      in pgBackRest's "backup from standby" mode, offloading the backup I/O from
+                      the primary. Leave it unset to keep the primary-only behavior.
 
                       Experimental: this additionally requires a pgBackRest TLS server and its
-                      certificates to be running on the instances. See
+                      certificates on the instances. See
                       https://github.com/operasoftware/cnpg-plugin-pgbackrest/issues/103
-                    enum:
-                    - "y"
-                    - prefer
-                    - "n"
-                    type: string
+                    properties:
+                      manageCertificate:
+                        description: |-
+                          ManageCertificate controls whether the plugin injects the certificate
+                          alternative name for that service into the cluster (serverAltDNSNames).
+                          Defaults to true; set it to false to manage that entry yourself.
+                        type: boolean
+                      manageService:
+                        description: |-
+                          ManageService controls whether the plugin injects the headless service
+                          used to reach the current primary's pgBackRest server. Defaults to true;
+                          set it to false to provision and manage that service yourself.
+                        type: boolean
+                      mode:
+                        description: |-
+                          Mode mirrors pgBackRest's backup-standby option: "y" requires the backup
+                          to run on a standby, "prefer" uses a standby when one is available and
+                          otherwise falls back to the primary.
+                        enum:
+                        - "y"
+                        - prefer
+                        type: string
+                    required:
+                    - mode
+                    type: object
                   compression:
                     description: |-
                       Compress a WAL file before sending it to the object store. Available

@@ -50,12 +50,14 @@ var _ = Describe("resolveStandbyTopology", func() {
 	}
 
 	cfg := func(mode pgbackrestApi.BackupStandbyType) *pgbackrestApi.PgbackrestConfiguration {
-		return &pgbackrestApi.PgbackrestConfiguration{BackupStandby: mode}
+		return &pgbackrestApi.PgbackrestConfiguration{
+			BackupStandby: &pgbackrestApi.StandbyBackupConfiguration{Mode: mode},
+		}
 	}
 
 	It("returns nil when the feature is disabled", func(ctx SpecContext) {
 		impl := newImpl(standby)
-		topo, err := impl.resolveStandbyTopology(ctx, newCluster(primaryPod), cfg(""))
+		topo, err := impl.resolveStandbyTopology(ctx, newCluster(primaryPod), &pgbackrestApi.PgbackrestConfiguration{})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(topo).To(BeNil())
 	})

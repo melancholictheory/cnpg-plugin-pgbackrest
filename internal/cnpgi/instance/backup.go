@@ -198,16 +198,17 @@ func (b BackupServiceImplementation) resolveStandbyTopology(
 ) (*pgbackrestCommand.StandbyBackupTopology, error) {
 	contextLogger := log.FromContext(ctx)
 
-	mode := string(cfg.BackupStandby)
+	if cfg.BackupStandby == nil {
+		return nil, nil
+	}
+	mode := string(cfg.BackupStandby.Mode)
 	currentPrimary := cluster.Status.CurrentPrimary
 	if !pgbackrestCommand.ShouldConfigurePrimaryPeer(mode, currentPrimary, b.InstanceName) {
-		if mode != "" && mode != string(pgbackrestApi.BackupStandbyDisabled) {
-			// Feature enabled but this instance is the primary (or no primary is
-			// known yet): fall back to a normal local backup.
-			contextLogger.Info(
-				"backup-from-standby enabled but this instance is not a standby; taking a local backup",
-				"instance", b.InstanceName, "currentPrimary", currentPrimary)
-		}
+		// Feature enabled but this instance is the primary (or no primary is
+		// known yet): fall back to a normal local backup.
+		contextLogger.Info(
+			"backup-from-standby enabled but this instance is not a standby; taking a local backup",
+			"instance", b.InstanceName, "currentPrimary", currentPrimary)
 		return nil, nil
 	}
 
