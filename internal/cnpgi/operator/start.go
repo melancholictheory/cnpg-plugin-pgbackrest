@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudnative-pg/cnpg-i-machinery/pkg/pluginhelper/http"
 	"github.com/cloudnative-pg/cnpg-i/pkg/lifecycle"
+	"github.com/cloudnative-pg/cnpg-i/pkg/operator"
 	"github.com/cloudnative-pg/cnpg-i/pkg/reconciler"
 	"google.golang.org/grpc"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,6 +29,9 @@ func (c *CNPGI) Start(ctx context.Context) error {
 			Client: c.Client,
 		})
 		lifecycle.RegisterOperatorLifecycleServer(server, LifecycleImplementation{
+			Client: c.Client,
+		})
+		operator.RegisterOperatorServer(server, OperatorImplementation{
 			Client: c.Client,
 		})
 		return nil

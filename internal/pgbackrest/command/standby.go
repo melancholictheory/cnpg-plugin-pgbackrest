@@ -53,6 +53,13 @@ const (
 	primaryHostIndex = 1
 )
 
+// StandbyBackupServiceName returns the name of the headless service the plugin
+// injects so a standby can reach the current primary's pgBackRest server on the
+// DefaultServerPort. It is kept distinct from CNPG's own -rw/-ro/-r services.
+func StandbyBackupServiceName(clusterName string) string {
+	return clusterName + "-pgbackrest"
+}
+
 // StandbyBackupTopology describes how a standby reaches the current primary's
 // pgBackRest TLS server to coordinate a backup taken from the standby.
 type StandbyBackupTopology struct {

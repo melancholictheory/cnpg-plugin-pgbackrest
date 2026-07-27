@@ -360,6 +360,19 @@ type StandbyBackupConfiguration struct {
 	ManageCertificate *bool `json:"manageCertificate,omitempty"`
 }
 
+// ShouldManageService reports whether the plugin should inject the headless
+// service (the default, unless ManageService is explicitly false).
+func (c *StandbyBackupConfiguration) ShouldManageService() bool {
+	return c.ManageService == nil || *c.ManageService
+}
+
+// ShouldManageCertificate reports whether the plugin should inject the
+// certificate alternative name (the default, unless ManageCertificate is
+// explicitly false).
+func (c *StandbyBackupConfiguration) ShouldManageCertificate() bool {
+	return c.ManageCertificate == nil || *c.ManageCertificate
+}
+
 // PgbackrestConfiguration is the configuration of all pgBackRest operations
 type PgbackrestConfiguration struct {
 	Repositories []PgbackrestRepository `json:"repositories"`
