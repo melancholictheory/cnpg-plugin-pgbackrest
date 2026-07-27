@@ -25,23 +25,28 @@ import (
 	"github.com/operasoftware/cnpg-plugin-pgbackrest/internal/pgbackrest/utils"
 )
 
-// Networking and filesystem defaults for the experimental "backup from
-// standby" feature. These mirror pgBackRest's TLS server defaults and the
-// sidecar's existing /controller layout. Certificate provisioning is
-// intentionally left as a follow-up (see issue #103): the paths below are the
-// contract the plugin expects the pgBackRest TLS certificates to be mounted at.
+// Networking and filesystem defaults for the "backup from standby" feature.
+// These mirror pgBackRest's TLS server defaults and the sidecar's existing
+// /controller layout. The TLS material is the database certificate set that
+// CloudNativePG already writes into every instance pod, reused for the
+// pgBackRest channel.
 const (
 	// DefaultServerPort is the port the pgBackRest TLS server listens on, and
 	// the port a standby uses to reach the primary's server. It matches
 	// pgBackRest's tls-server-port default.
 	DefaultServerPort = 8432
 
-	// DefaultTLSCertFile, DefaultTLSKeyFile and DefaultTLSCAFile are the mount
-	// paths the plugin expects the pgBackRest TLS client/server certificate
-	// material at inside every instance sidecar.
-	DefaultTLSCertFile = "/controller/certificates/pgbackrest/tls.crt"
-	DefaultTLSKeyFile  = "/controller/certificates/pgbackrest/tls.key"
-	DefaultTLSCAFile   = "/controller/certificates/pgbackrest/ca.crt"
+	// DefaultTLSCertFile, DefaultTLSKeyFile and DefaultTLSCAFile are the
+	// CloudNativePG-managed certificate files present in every instance pod
+	// under /controller/certificates: the streaming_replica client certificate
+	// and the server CA. They are reused for the pgBackRest TLS connection.
+	DefaultTLSCertFile = "/controller/certificates/streaming_replica.crt"
+	DefaultTLSKeyFile  = "/controller/certificates/streaming_replica.key"
+	DefaultTLSCAFile   = "/controller/certificates/server-ca.crt"
+
+	// StreamingReplicaCN is the common name of the reused client certificate.
+	// The pgBackRest server authorizes it through tls-server-auth.
+	StreamingReplicaCN = "streaming_replica"
 
 	// localSocketPath is the unix socket every CNPG instance pod exposes for
 	// its local PostgreSQL.
@@ -58,6 +63,14 @@ const (
 // DefaultServerPort. It is kept distinct from CNPG's own -rw/-ro/-r services.
 func StandbyBackupServiceName(clusterName string) string {
 	return clusterName + "-pgbackrest"
+}
+
+// StandbyBackupServiceHost returns the in-cluster DNS name a standby uses to
+// reach the current primary's pgBackRest server. The name is covered by the
+// server certificate alternative names injected alongside the service, so the
+// TLS connection verifies.
+func StandbyBackupServiceHost(clusterName, namespace string) string {
+	return StandbyBackupServiceName(clusterName) + "." + namespace
 }
 
 // StandbyBackupTopology describes how a standby reaches the current primary's

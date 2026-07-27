@@ -29,7 +29,6 @@ import (
 	"github.com/cloudnative-pg/machinery/pkg/fileutils"
 	"github.com/cloudnative-pg/machinery/pkg/log"
 	pgTime "github.com/cloudnative-pg/machinery/pkg/postgres/time"
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pgbackrestv1 "github.com/operasoftware/cnpg-plugin-pgbackrest/api/v1"
@@ -110,12 +109,7 @@ func (b BackupServiceImplementation) Backup(
 	// When backup-from-standby is enabled and this instance is a standby, point
 	// pgBackRest at the current primary so both stanza-create and the backup can
 	// coordinate control operations there.
-	standbyTopology, err := b.resolveStandbyTopology(ctx, configuration.Cluster, &archive.Spec.Configuration)
-	if err != nil {
-		contextLogger.Error(err, "while resolving backup-from-standby topology")
-		return nil, err
-	}
-	if standbyTopology != nil {
+	if standbyTopology := b.resolveStandbyTopology(ctx, configuration.Cluster, &archive.Spec.Configuration); standbyTopology != nil {
 		contextLogger.Info("Taking backup from standby",
 			"primaryHost", standbyTopology.PrimaryHost, "mode", standbyTopology.Mode)
 		backupCmd = backupCmd.WithStandbyBackup(standbyTopology)
@@ -188,18 +182,17 @@ func (b BackupServiceImplementation) Backup(
 // resolveStandbyTopology returns the topology needed to take this backup from a
 // standby, or nil when a normal (local/primary) backup should be taken. It
 // returns nil when the feature is disabled, or when this instance is the
-// primary (or no primary is known yet). When this instance is a standby with a
-// known primary, it resolves the primary pod's IP so pgBackRest can reach the
-// primary's TLS server.
+// primary (or no primary is known yet). Otherwise it points pgBackRest at the
+// current primary through the headless service the plugin injects.
 func (b BackupServiceImplementation) resolveStandbyTopology(
 	ctx context.Context,
 	cluster *cnpgv1.Cluster,
 	cfg *pgbackrestApi.PgbackrestConfiguration,
-) (*pgbackrestCommand.StandbyBackupTopology, error) {
+) *pgbackrestCommand.StandbyBackupTopology {
 	contextLogger := log.FromContext(ctx)
 
 	if cfg.BackupStandby == nil {
-		return nil, nil
+		return nil
 	}
 	mode := string(cfg.BackupStandby.Mode)
 	currentPrimary := cluster.Status.CurrentPrimary
@@ -209,30 +202,20 @@ func (b BackupServiceImplementation) resolveStandbyTopology(
 		contextLogger.Info(
 			"backup-from-standby enabled but this instance is not a standby; taking a local backup",
 			"instance", b.InstanceName, "currentPrimary", currentPrimary)
-		return nil, nil
+		return nil
 	}
 
-	// Resolve the primary pod's IP so pgBackRest can reach its TLS server. This
-	// is a direct (uncached) read: Pod is in the manager cache DisableFor list,
-	// so it needs only "get pods", not a cluster-wide Pod informer. Using the pod
-	// IP is one discovery approach; a dedicated headless service is an
-	// alternative left open in issue #103.
-	var primaryPod corev1.Pod
-	key := client.ObjectKey{Namespace: cluster.Namespace, Name: currentPrimary}
-	if err := b.Client.Get(ctx, key, &primaryPod); err != nil {
-		return nil, fmt.Errorf("while getting primary pod %q: %w", currentPrimary, err)
-	}
-	if primaryPod.Status.PodIP == "" {
-		return nil, fmt.Errorf("primary pod %q has no IP address yet", currentPrimary)
-	}
-
+	// Reach the current primary through the headless service the plugin injects
+	// via the operator MutateCluster hook. Its rw selector resolves to the
+	// primary and the name is covered by the server certificate SANs, so this
+	// stays correct across failovers without reading pod IPs.
 	return &pgbackrestCommand.StandbyBackupTopology{
-		PrimaryHost:   primaryPod.Status.PodIP,
+		PrimaryHost:   pgbackrestCommand.StandbyBackupServiceHost(cluster.Name, cluster.Namespace),
 		PrimaryPort:   pgbackrestCommand.DefaultServerPort,
 		PrimaryPGData: b.PGDataPath,
 		Mode:          mode,
 		CertFile:      pgbackrestCommand.DefaultTLSCertFile,
 		KeyFile:       pgbackrestCommand.DefaultTLSKeyFile,
 		CAFile:        pgbackrestCommand.DefaultTLSCAFile,
-	}, nil
+	}
 }
