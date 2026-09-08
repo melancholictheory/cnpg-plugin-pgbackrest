@@ -41,8 +41,16 @@ import (
 )
 
 const (
-	kindPod             = "Pod"
-	kindJob             = "Job"
+	kindPod = "Pod"
+	kindJob = "Job"
+
+	pgbackrestImageVolumeName = "pgbackrest-bin"
+	pgbackrestImageMountPath  = "/pgbackrest"
+	pgbackrestImagePath       = pgbackrestImageMountPath +
+		"/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	pgbackrestImageLibraryPath = pgbackrestImageMountPath + "/usr/lib/x86_64-linux-gnu:" +
+		pgbackrestImageMountPath + "/usr/lib/aarch64-linux-gnu:" +
+		pgbackrestImageMountPath + "/usr/lib"
 	jobRoleFullRecovery = "full-recovery"
 )
 
@@ -158,6 +166,20 @@ func (impl LifecycleImplementation) calculateSidecarSecurityContext(
 	return nil
 }
 
+func (impl LifecycleImplementation) calculateSidecarPgbackrestImage(
+	ctx context.Context,
+	archive *pgbackrestv1.Archive,
+) *corev1.ImageVolumeSource {
+	contextLogger := log.FromContext(ctx).WithName("lifecycle")
+
+	if archive != nil && archive.Spec.InstanceSidecarConfiguration.PgbackrestImage != nil {
+		contextLogger.Info("Loading pgBackRest from the image volume defined in the archive object.")
+		return archive.Spec.InstanceSidecarConfiguration.PgbackrestImage
+	}
+
+	return nil
+}
+
 func (impl LifecycleImplementation) getArchives(
 	ctx context.Context,
 	namespace string,
@@ -244,8 +266,9 @@ func (impl LifecycleImplementation) reconcileJob(
 	}
 	resources := impl.calculateSidecarResources(ctx, recoveryArchive)
 	securityContext := impl.calculateSidecarSecurityContext(ctx, recoveryArchive)
+	pgbackrestImage := impl.calculateSidecarPgbackrestImage(ctx, recoveryArchive)
 
-	return reconcileJob(ctx, cluster, request, env, resources, securityContext)
+	return reconcileJob(ctx, cluster, request, env, resources, securityContext, pgbackrestImage)
 }
 
 func reconcileJob(
@@ -255,6 +278,7 @@ func reconcileJob(
 	env []corev1.EnvVar,
 	resources *corev1.ResourceRequirements,
 	securityContext *corev1.SecurityContext,
+	pgbackrestImage *corev1.ImageVolumeSource,
 ) (*lifecycle.OperatorLifecycleResponse, error) {
 	contextLogger := log.FromContext(ctx).WithName("lifecycle")
 	if pluginConfig := cluster.GetRecoverySourcePlugin(); pluginConfig == nil || pluginConfig.Name != metadata.PluginName {
@@ -290,7 +314,7 @@ func reconcileJob(
 		corev1.Container{
 			Args: []string{"restore"},
 		},
-		env, resources, securityContext,
+		env, resources, securityContext, pgbackrestImage,
 	); err != nil {
 		return nil, fmt.Errorf("while reconciling pod spec for job: %w", err)
 	}
@@ -322,8 +346,9 @@ func (impl LifecycleImplementation) reconcilePod(
 	}
 	resources := impl.calculateSidecarResources(ctx, archive)
 	securityContext := impl.calculateSidecarSecurityContext(ctx, archive)
+	pgbackrestImage := impl.calculateSidecarPgbackrestImage(ctx, archive)
 
-	return reconcilePod(ctx, cluster, request, pluginConfiguration, env, resources, securityContext)
+	return reconcilePod(ctx, cluster, request, pluginConfiguration, env, resources, securityContext, pgbackrestImage)
 }
 
 func reconcilePod(
@@ -334,6 +359,7 @@ func reconcilePod(
 	env []corev1.EnvVar,
 	resources *corev1.ResourceRequirements,
 	securityContext *corev1.SecurityContext,
+	pgbackrestImage *corev1.ImageVolumeSource,
 ) (*lifecycle.OperatorLifecycleResponse, error) {
 	pod, err := decoder.DecodePodJSON(request.GetObjectDefinition())
 	if err != nil {
@@ -353,7 +379,7 @@ func reconcilePod(
 			corev1.Container{
 				Args: []string{"instance"},
 			},
-			env, resources, securityContext,
+			env, resources, securityContext, pgbackrestImage,
 		); err != nil {
 			return nil, fmt.Errorf("while reconciling pod spec for pod: %w", err)
 		}
@@ -380,6 +406,7 @@ func reconcilePodSpec(
 	additionalEnvs []corev1.EnvVar,
 	resources *corev1.ResourceRequirements,
 	securityContext *corev1.SecurityContext,
+	pgbackrestImage *corev1.ImageVolumeSource,
 ) error {
 	//nolint:prealloc
 	envs := []corev1.EnvVar{
@@ -400,6 +427,8 @@ func reconcilePodSpec(
 	}
 
 	envs = append(envs, additionalEnvs...)
+
+	mountPgbackrestImageVolume(spec, &sidecarConfig, pgbackrestImage)
 
 	baseProbe := &corev1.Probe{
 		FailureThreshold: 10,
@@ -466,6 +495,41 @@ func reconcilePodSpec(
 }
 
 // TODO: move to machinery once the logic is finalized
+
+// mountPgbackrestImageVolume mounts pgBackRest from an image volume into the sidecar,
+// so its version is independent of the one built into the sidecar image. Does nothing
+// when no image is configured.
+func mountPgbackrestImageVolume(
+	spec *corev1.PodSpec,
+	sidecar *corev1.Container,
+	source *corev1.ImageVolumeSource,
+) {
+	if source == nil {
+		return
+	}
+
+	for i := range spec.Volumes {
+		if spec.Volumes[i].Name == pgbackrestImageVolumeName {
+			return
+		}
+	}
+
+	spec.Volumes = append(spec.Volumes, corev1.Volume{
+		Name:         pgbackrestImageVolumeName,
+		VolumeSource: corev1.VolumeSource{Image: source.DeepCopy()},
+	})
+	sidecar.VolumeMounts = append(sidecar.VolumeMounts, corev1.VolumeMount{
+		Name:      pgbackrestImageVolumeName,
+		MountPath: pgbackrestImageMountPath,
+	})
+	// pgBackRest is dynamically linked and has no RUNPATH, so the libraries shipped by the
+	// image have to be found too. Only one architecture directory exists in a given image
+	// and the loader ignores the ones that do not.
+	sidecar.Env = append(sidecar.Env,
+		corev1.EnvVar{Name: "PATH", Value: pgbackrestImagePath},
+		corev1.EnvVar{Name: "LD_LIBRARY_PATH", Value: pgbackrestImageLibraryPath},
+	)
+}
 
 // InjectPluginVolumePodSpec injects the plugin volume into a CNPG Pod spec.
 func InjectPluginVolumePodSpec(spec *corev1.PodSpec, mainContainerName string) {

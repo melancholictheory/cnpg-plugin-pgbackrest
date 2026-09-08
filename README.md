@@ -199,6 +199,39 @@ spec:
 > it's possible to disable key verification and use self-signed keys, using HTTP
 > endpoint is not possible.
 
+### Using pgBackRest From an Image Volume
+
+By default the sidecar runs the pgBackRest build that ships inside the plugin's
+sidecar image, so its version follows the plugin release. Setting
+`instanceSidecarConfiguration.pgbackrestImage` replaces it with an OCI image
+mounted as a read-only [image volume](https://kubernetes.io/docs/tasks/configure-pod-container/image-volumes/):
+
+```yaml
+apiVersion: pgbackrest.cnpg.opera.com/v1
+kind: Archive
+metadata:
+  name: minio-store
+spec:
+  instanceSidecarConfiguration:
+    pgbackrestImage:
+      reference: example.com/pgbackrest:2.56.1
+      pullPolicy: IfNotPresent
+```
+
+The image is mounted at `/pgbackrest`. The sidecar looks for the executable in
+`/pgbackrest/usr/bin` and for shared libraries in `/pgbackrest/usr/lib`.
+pgBackRest is dynamically linked, so the image has to carry the libraries it
+needs (`libssl`, `libcrypto`, `liblz4`, `libzstd`, `libxml2`, `libpq` and the
+rest) and not only the executable. Installing the `pgbackrest` package into a
+Debian based image produces a suitable layout. Both the instance pods and the
+restore Job use the image.
+
+> [!IMPORTANT]
+> Image volumes are a Kubernetes feature, enabled by default on 1.35 and later.
+> Kubernetes 1.33 and 1.34 need the `ImageVolume` feature gate, and the
+> container runtime has to be containerd 2.1 or later, or CRI-O 1.31 or later.
+> Leave the field unset on clusters that do not meet this.
+
 ### Configuring WAL Archiving
 
 Once the `Archive` is defined, you can configure a PostgreSQL cluster to archive WALs by
