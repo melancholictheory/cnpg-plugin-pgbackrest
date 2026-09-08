@@ -1,8 +1,11 @@
 Azurite
 CloudNativePG
+containerd
+CRI
 Gi
 IfNotPresent
 MinIO
+OCI
 PITR
 TODO
 TLS

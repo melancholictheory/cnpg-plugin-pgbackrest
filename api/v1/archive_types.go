@@ -35,6 +35,14 @@ type InstanceSidecarConfiguration struct {
 	// SecurityContext for the sidecar container
 	// +optional
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
+	// PgbackrestImage mounts pgBackRest from an OCI image volume instead of using the
+	// copy built into the sidecar image, decoupling the pgBackRest version from the
+	// plugin release. The image must provide the pgBackRest binary under /usr/bin and
+	// the shared libraries it links against under /usr/lib, built on the same Debian
+	// release as the sidecar image, since the sidecar's dynamic loader runs the binary.
+	// Requires a cluster with the Kubernetes ImageVolume feature available.
+	// +optional
+	PgbackrestImage *corev1.ImageVolumeSource `json:"pgbackrestImage,omitempty"`
 }
 
 // ArchiveSpec defines the desired state of Archive.

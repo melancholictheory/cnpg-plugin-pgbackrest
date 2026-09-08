@@ -127,7 +127,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: jobJSON,
 			}
 
-			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil)
+			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).NotTo(BeNil())
 			Expect(response.JsonPatch).NotTo(BeEmpty())
@@ -148,7 +148,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: jobJSON,
 			}
 
-			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil)
+			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).To(BeNil())
 		})
@@ -158,7 +158,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: []byte("invalid-json"),
 			}
 
-			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil)
+			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil, nil)
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 		})
@@ -185,7 +185,7 @@ var _ = Describe("LifecycleImplementation", func() {
 					ObjectDefinition: jobJSON,
 				}
 
-				response, err := reconcileJob(ctx, cluster, request, nil, nil, nil)
+				response, err := reconcileJob(ctx, cluster, request, nil, nil, nil, nil)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(response).To(BeNil())
 			})
@@ -205,7 +205,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: podJSON,
 			}
 
-			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, nil)
+			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).NotTo(BeNil())
 			Expect(response.JsonPatch).NotTo(BeEmpty())
@@ -223,7 +223,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: []byte("invalid-json"),
 			}
 
-			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, nil)
+			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, nil, nil)
 			Expect(err).To(HaveOccurred())
 			Expect(response).To(BeNil())
 		})
@@ -282,6 +282,65 @@ var _ = Describe("LifecycleImplementation", func() {
 		})
 	})
 
+	Describe("pgBackRest image volume", func() {
+		source := &corev1.ImageVolumeSource{
+			Reference:  "example.com/pgbackrest:2.56.1",
+			PullPolicy: corev1.PullIfNotPresent,
+		}
+		sidecar := corev1.Container{Args: []string{"instance"}}
+
+		newSpec := func() *corev1.PodSpec {
+			return &corev1.PodSpec{Containers: []corev1.Container{{Name: "postgres"}}}
+		}
+
+		countVolume := func(spec *corev1.PodSpec) int {
+			found := 0
+			for _, volume := range spec.Volumes {
+				if volume.Name == pgbackrestImageVolumeName {
+					found++
+				}
+			}
+			return found
+		}
+
+		It("adds no volume when no image is configured", func() {
+			spec := newSpec()
+			Expect(reconcilePodSpec(cluster, spec, "postgres", sidecar, nil, nil, nil, nil)).To(Succeed())
+			Expect(countVolume(spec)).To(BeZero())
+		})
+
+		It("mounts the image into the sidecar and points it at the binary", func() {
+			spec := newSpec()
+			Expect(reconcilePodSpec(cluster, spec, "postgres", sidecar, nil, nil, nil, source)).To(Succeed())
+
+			Expect(countVolume(spec)).To(Equal(1))
+			for _, volume := range spec.Volumes {
+				if volume.Name == pgbackrestImageVolumeName {
+					Expect(volume.Image).To(Equal(source))
+				}
+			}
+
+			Expect(spec.InitContainers).To(HaveLen(1))
+			injected := spec.InitContainers[0]
+			Expect(injected.VolumeMounts).To(ContainElement(corev1.VolumeMount{
+				Name:      pgbackrestImageVolumeName,
+				MountPath: pgbackrestImageMountPath,
+			}))
+			Expect(injected.Env).To(ContainElement(corev1.EnvVar{Name: "PATH", Value: pgbackrestImagePath}))
+			Expect(injected.Env).To(ContainElement(corev1.EnvVar{
+				Name:  "LD_LIBRARY_PATH",
+				Value: pgbackrestImageLibraryPath,
+			}))
+		})
+
+		It("does not add the volume a second time", func() {
+			spec := newSpec()
+			Expect(reconcilePodSpec(cluster, spec, "postgres", sidecar, nil, nil, nil, source)).To(Succeed())
+			Expect(reconcilePodSpec(cluster, spec, "postgres", sidecar, nil, nil, nil, source)).To(Succeed())
+			Expect(countVolume(spec)).To(Equal(1))
+		})
+	})
+
 	Describe("reconcilePod with security context", func() {
 		It("applies custom security context to sidecar when configured", func(ctx SpecContext) {
 			// Given
@@ -311,7 +370,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				},
 			}
 
-			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, customSecurityContext)
+			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, customSecurityContext, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).NotTo(BeNil())
 			Expect(response.JsonPatch).NotTo(BeEmpty())
@@ -353,7 +412,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: podJSON,
 			}
 
-			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, nil)
+			response, err := reconcilePod(ctx, cluster, request, pluginConfiguration, nil, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).NotTo(BeNil())
 			Expect(response.JsonPatch).NotTo(BeEmpty())
@@ -413,7 +472,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				RunAsGroup:               ptr.To(int64(1000)),
 			}
 
-			response, err := reconcileJob(ctx, cluster, request, nil, nil, customSecurityContext)
+			response, err := reconcileJob(ctx, cluster, request, nil, nil, customSecurityContext, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).NotTo(BeNil())
 			Expect(response.JsonPatch).NotTo(BeEmpty())
@@ -464,7 +523,7 @@ var _ = Describe("LifecycleImplementation", func() {
 				ObjectDefinition: jobJSON,
 			}
 
-			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil)
+			response, err := reconcileJob(ctx, cluster, request, nil, nil, nil, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(response).NotTo(BeNil())
 			Expect(response.JsonPatch).NotTo(BeEmpty())
