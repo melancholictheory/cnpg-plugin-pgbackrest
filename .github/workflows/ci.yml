@@ -49,9 +49,7 @@ jobs:
         run: |
           task manifest
       - name: Publish images
-        if: |
-          github.event_name == 'workflow_dispatch' ||
-          github.event.pull_request.head.repo.full_name == github.repository
+        if: false
         env:
           REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
