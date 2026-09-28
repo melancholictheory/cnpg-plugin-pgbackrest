@@ -90,10 +90,10 @@ func WithIgnoreExistingResources(ignore bool) InstallOption {
 func Install(ctx context.Context, cl client.Client, opts ...InstallOption) error {
 	// Defining the default options
 	options := &InstallCloudNativePGOptions{
-		ImageName:                "ghcr.io/cloudnative-pg/cloudnative-pg-testing",
-		ImageTag:                 "main",
+		ImageName:                "ghcr.io/cloudnative-pg/cloudnative-pg",
+		ImageTag:                 "1.30.0",
 		KustomizationResourceURL: "https://github.com/cloudnative-pg/cloudnative-pg.git/config/default",
-		KustomizationRef:         "main",
+		KustomizationRef:         "v1.30.0",
 		KustomizationTimeout:     "120",
 		IgnoreExistResources:     true,
 	}
